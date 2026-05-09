@@ -44,6 +44,11 @@ export default {
 			return new Response("Method not allowed", { status: 405 });
 		}
 
+		// tambah route di fetch handler, sebelum return Not found
+		if (url.pathname === "/api/chat/json" && request.method === "POST") {
+		return handleChatJsonRequest(request, env);
+		}
+
 		// Handle 404 for unmatched routes
 		return new Response("Not found", { status: 404 });
 	},
@@ -101,4 +106,36 @@ async function handleChatRequest(
 			},
 		);
 	}
+}
+// tambah function ini di bawah handleChatRequest
+async function handleChatJsonRequest(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  try {
+    const { messages = [], system } = (await request.json()) as {
+      messages: ChatMessage[];
+      system?: string;
+    };
+
+    if (!messages.some((msg) => msg.role === "system")) {
+      messages.unshift({ role: "system", content: system ?? SYSTEM_PROMPT });
+    }
+
+    const result = (await env.AI.run(MODEL_ID, {
+      messages,
+      max_tokens: 1024,
+      stream: false,
+    })) as { response: string };
+
+    return new Response(JSON.stringify({ response: result.response }), {
+      headers: { "content-type": "application/json" },
+    });
+  } catch (error) {
+    console.error("Error processing chat request:", error);
+    return new Response(JSON.stringify({ error: "Failed to process request" }), {
+      status: 500,
+      headers: { "content-type": "application/json" },
+    });
+  }
 }
