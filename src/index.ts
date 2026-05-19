@@ -49,6 +49,38 @@ export default {
 		return handleChatJsonRequest(request, env);
 		}
 
+		// OpenAI-compatible: fake /v1/models untuk verifikasi n8n
+		if (url.pathname === "/v1/models" && request.method === "GET") {
+		return Response.json({
+			object: "list",
+			data: [{ id: MODEL_ID, object: "model", created: 0, owned_by: "cloudflare" }]
+		});
+		}
+
+		// OpenAI-compatible: /v1/chat/completions untuk n8n
+		if (url.pathname === "/v1/chat/completions" && request.method === "POST") {
+		const body = (await request.json()) as { messages: ChatMessage[] };
+		const messages = body.messages ?? [];
+		if (!messages.some((msg) => msg.role === "system")) {
+			messages.unshift({ role: "system", content: SYSTEM_PROMPT });
+		}
+		const result = (await env.AI.run(MODEL_ID, {
+			messages,
+			max_tokens: 1024,
+			stream: false,
+		})) as { response: string };
+
+		return Response.json({
+			id: "chatcmpl-cf",
+			object: "chat.completion",
+			choices: [{
+			index: 0,
+			message: { role: "assistant", content: result.response },
+			finish_reason: "stop"
+			}]
+		});
+		}
+
 		// Handle 404 for unmatched routes
 		return new Response("Not found", { status: 404 });
 	},
